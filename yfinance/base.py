@@ -112,6 +112,7 @@ class TickerBase():
                     Optional. If passed as False, will suppress
                     error message printing to console.
         """
+        df = utils.empty_df()
 
         if start or period is None or period.lower() == "max":
             if start is None:
@@ -149,17 +150,38 @@ class TickerBase():
 
         # Getting data from json
         url = "{}/v8/finance/chart/{}".format(self._base_url, self.ticker)
-        data = self.session.get(
-            url=url,
-            params=params,
-            proxies=proxy,
-            headers=utils.user_agent_headers
-        )
-        if "Will be right back" in data.text:
-            raise RuntimeError("*** YAHOO! FINANCE IS CURRENTLY DOWN! ***\n"
-                               "Our engineers are working quickly to resolve "
-                               "the issue. Thank you for your patience.")
-        data = data.json()
+        retries = 20
+        backoff = 1
+        while(retries > 0):
+            retries -= 1
+            try:
+                data = self.session.get(
+                    url=url,
+                    params=params,
+                    proxies=proxy,
+                    timeout=5,
+                    headers=utils.user_agent_headers
+                )
+
+                if "Will be right back" in data.text:
+                    raise RuntimeError("*** YAHOO! FINANCE IS CURRENTLY DOWN! ***\n"
+                                       "Our engineers are working quickly to resolve "
+                                       "the issue. Thank you for your patience.")
+
+                break
+            except Exception as e:
+                _time.sleep(backoff)
+                backoff = min(backoff * 2, 30)
+                pass
+        else:
+            shared._ERRORS[self.ticker] = 'Retried 20 times. Skipping symbol.'
+            return df
+
+        try:
+            data = data.json()
+        except Exception:
+            shared._ERRORS[self.ticker] = 'Got JSONDecodeError. Skipping symbol.'
+            return df
 
         # Work with errors
         debug_mode = True
@@ -169,29 +191,26 @@ class TickerBase():
         err_msg = "No data found for this date range, symbol may be delisted"
         if "chart" in data and data["chart"]["error"]:
             err_msg = data["chart"]["error"]["description"]
-            shared._DFS[self.ticker] = utils.empty_df()
             shared._ERRORS[self.ticker] = err_msg
             if "many" not in kwargs and debug_mode:
                 print('- %s: %s' % (self.ticker, err_msg))
-            return shared._DFS[self.ticker]
+            return df
 
-        elif "chart" not in data or data["chart"]["result"] is None or \
+        if "chart" not in data or data["chart"]["result"] is None or \
                 not data["chart"]["result"]:
-            shared._DFS[self.ticker] = utils.empty_df()
             shared._ERRORS[self.ticker] = err_msg
             if "many" not in kwargs and debug_mode:
                 print('- %s: %s' % (self.ticker, err_msg))
-            return shared._DFS[self.ticker]
+            return df
 
         # parse quotes
         try:
             quotes = utils.parse_quotes(data["chart"]["result"][0], tz)
         except Exception:
-            shared._DFS[self.ticker] = utils.empty_df()
             shared._ERRORS[self.ticker] = err_msg
             if "many" not in kwargs and debug_mode:
                 print('- %s: %s' % (self.ticker, err_msg))
-            return shared._DFS[self.ticker]
+            return df
 
         # 2) fix weired bug with Yahoo! - returning 60m for 30m bars
         if interval.lower() == "30m":
