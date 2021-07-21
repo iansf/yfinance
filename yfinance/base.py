@@ -339,6 +339,8 @@ class TickerBase():
             self._institutional_holders = holders[1]
         elif len(holders) >= 1:
             self._major_holders = holders[0]
+        else:
+            pass
 
         #self._major_holders = holders[0]
         #self._institutional_holders = holders[1]
@@ -362,19 +364,21 @@ class TickerBase():
         # sustainability
         d = {}
         try:
-            if isinstance(data.get('esgScores'), dict):
-                for item in data['esgScores']:
-                    if not isinstance(data['esgScores'][item], (dict, list)):
-                        d[item] = data['esgScores'][item]
+            esg_info = data.get('esgScores')
+            if isinstance(esg_info, dict):
+                if 'err' not in esg_info or esg_info['err']['status'] == 200:
+                    for item in data['esgScores']:
+                        if not isinstance(data['esgScores'][item], (dict, list)):
+                            d[item] = data['esgScores'][item]
 
-                s = _pd.DataFrame(index=[0], data=d)[-1:].T
-                s.columns = ['Value']
-                s.index.name = '%.f-%.f' % (
-                    s[s.index == 'ratingYear']['Value'].values[0],
-                    s[s.index == 'ratingMonth']['Value'].values[0])
+                    s = _pd.DataFrame(index=[0], data=d)[-1:].T
+                    s.columns = ['Value']
+                    s.index.name = '%.f-%.f' % (
+                        s[s.index == 'ratingYear']['Value'].values[0],
+                        s[s.index == 'ratingMonth']['Value'].values[0])
 
-                self._sustainability = s[~s.index.isin(
-                    ['maxAge', 'ratingYear', 'ratingMonth'])]
+                    self._sustainability = s[~s.index.isin(
+                        ['maxAge', 'ratingYear', 'ratingMonth'])]
         except Exception:
             pass
 

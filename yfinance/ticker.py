@@ -103,9 +103,15 @@ class Ticker(TickerBase):
             date = self._expirations[date]
             options = self._download_options(date, proxy=proxy)
 
+        calls = []
+        if 'calls' in options:
+            calls = self._options2df(options['calls'], tz=tz)
+        puts = []
+        if 'puts' in options:
+            puts = self._options2df(options['puts'], tz=tz)
         return _namedtuple('Options', ['calls', 'puts'])(**{
-            "calls": self._options2df(options['calls'], tz=tz),
-            "puts": self._options2df(options['puts'], tz=tz)
+            "calls": calls,
+            "puts": puts
         })
 
     # ------------------------
